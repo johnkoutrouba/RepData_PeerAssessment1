@@ -7,19 +7,121 @@ output:
 
 
 ## Loading and preprocessing the data
+This assumes all files from the repository are synched and present in the
+working directory.  
 
+First, unzip the data files.
+```{r}
+unzip("activity.zip")
+```
+
+Next, read in the activity data file and view some summary information.
+```{r}
+activity <- read.csv("activity.csv", header = TRUE)
+str(activity)
+summary(activity)
+```
+
+The date field was read in as a factor.  Convert it to a date.
+```{r}
+library(lubridate)
+activity$date <- ymd(activity$date)
+```
+
+The data set is now ready for analysis.  
 
 
 ## What is mean total number of steps taken per day?
+The ddply function from the plyr package can sum the steps per day so that the 
+mean and median are easy to calculate.  
 
+First, a quick visualization of the data in the form of a histogram of total
+steps by day.
 
+```{r, message=FALSE}
+library(plyr)
+library(ggplot2)
+```
+```{r, message=FALSE}
+qplot(ddply(activity, .(date), summarise, totsteps = sum(steps))[,2], 
+      na.rm = TRUE, geom = "histogram", xlab = "Number of Steps Per Day",
+      ylab = "Number of Days", binwidth = 1000)
+mean(ddply(activity, .(date), summarise, totsteps = sum(steps))[,2], na.rm = TRUE)
+median(ddply(activity, .(date), summarise, totsteps = sum(steps))[,2], na.rm = TRUE)
+```
+```{r, echo=FALSE}
+meansteps <- mean(ddply(activity, .(date), summarise, totsteps = sum(steps))[,2], na.rm = TRUE)
+mediansteps <- median(ddply(activity, .(date), summarise, totsteps = sum(steps))[,2], na.rm = TRUE)
+```
+
+The mean steps per day is `r meansteps` and the median steps per day is `r mediansteps`, or a little under 11,000 for both values.  This corresponds to the tallest bar in the chart.  
 
 ## What is the average daily activity pattern?
+A plot of the data showing the steps per interval will illustrate the daily 
+activity pattern.
 
+```{r, message=FALSE}
+library(ggplot2)
+steps <- ddply(activity, .(interval), summarise, totsteps = mean(steps, na.rm = TRUE))
+qplot(interval, totsteps, data = steps, geom = "line") +
+        theme(legend.position = "none") +
+        xlab("Time of Day") +
+        ylab("Average Number of Steps")
+```
 
+The plot shows an average day starting between 05:30 and 06:00 with a flurry 
+of activity that tapers off around 10:00.  The highest average number of steps 
+occurs between 08:35 and 08:40. The day maintains a relative steady-state 
+of activity, slightly increasing through the afternoon.  The activity 
+level declines dramatically into the evening, and by 21:00 is very low for the 
+rest of the night.
 
 ## Imputing missing values
+The data set is missing 2304 values. The missing values will be substituted with 
+imputed values using a median function for each value's interval in the sample.
 
+```{r}
+sum(is.na(activity$steps)) # Calculate number of NA values
+mediansteps <- ddply(activity, .(interval), summarise, mediansteps = median(steps, na.rm = TRUE))
+for (i in 1:dim(activity)[1]) {
+        if (is.na(activity[i, "steps"])) {
+                activity[i, "steps"] <- mediansteps[mediansteps$interval == activity[i, "interval"], "mediansteps"]
+        }
+}
+```
+```{r, echo=FALSE}
+meansteps <- mean(ddply(activity, .(date), summarise, totsteps = sum(steps))[,2], na.rm = TRUE)
+mediansteps <- median(ddply(activity, .(date), summarise, totsteps = sum(steps))[,2], na.rm = TRUE)
+```
+With the imputed values, the mean and median are now `r meansteps` and `r mediansteps`.  
 
+```{r, message=FALSE}
+qplot(ddply(activity, .(date), summarise, totsteps = sum(steps))[,2], 
+      na.rm = TRUE, geom = "histogram", xlab = "Number of Steps Per Day",
+      ylab = "Number of Days", binwidth = 1000)
+mean(ddply(activity, .(date), summarise, totsteps = sum(steps))[,2], na.rm = TRUE)
+median(ddply(activity, .(date), summarise, totsteps = sum(steps))[,2], na.rm = TRUE)
+```
+
+The new values are lower than the values calculated excluding the imputed
+data.
 
 ## Are there differences in activity patterns between weekdays and weekends?
+To understand the difference between weekdays and weekends, a new variable to 
+indicate weekday or weekend is added to the data set.  Then a plot comparing the
+two can be constructed. 
+
+```{r}
+activity[weekdays(activity$date) 
+         %in% c("Monday", "Tuesday", "Wednesday",
+                "Thursday", "Friday"), "day_end"] <- "weekday"
+activity[weekdays(activity$date) 
+         %in% c("Saturday", "Sunday"), "day_end"] <- "weekend"
+steps <- ddply(activity, .(interval, day_end), summarise, totsteps = mean(steps, na.rm = TRUE))
+qplot(interval, totsteps, data = steps, geom = "line", color = day_end) +
+        xlab("Time of Day") +
+        ylab("Average Number of Steps")
+```
+
+When the two series are plotted together, it is easy to see that weekend days
+are more active, and start and end later than week days.
